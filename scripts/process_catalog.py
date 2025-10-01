@@ -3,7 +3,7 @@ import os
 
 # Ruta relativa al proyecto
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # carpeta Project/
-INPUT_FILE = os.path.join(BASE_DIR, "files", "catalog-products.xlsx")
+INPUT_FILE = os.path.join(BASE_DIR, "files", "catalog-products-csv-_3_.xlsx")
 OUTPUT_FILE = os.path.join(BASE_DIR, "output", "productos_filtrados.xlsx")
 
 # Leer Excel completo
