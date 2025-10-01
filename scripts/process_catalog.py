@@ -78,7 +78,7 @@ df_es["PVP_WEB"] = df_es["url"].map(pvp_results)
 df_result = pd.DataFrame({
     "SKU": df_es["SKU"],
     "MODELO": df_es["modello"],
-    "CATEGORIA": df_es["category"],
+    "CATEGORIA": df_es["categorySingular"],
     "STOCK_LA62": "N/A",  # aún no disponible
     "PVP_WEB": df_es["PVP_WEB"],
     "URL": df_es["url"].apply(normalize_url)
