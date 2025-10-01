@@ -1,10 +1,13 @@
 import pandas as pd
 import os
+from datetime import datetime
 
 # Ruta relativa al proyecto
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # carpeta Project/
 INPUT_FILE = os.path.join(BASE_DIR, "files", "catalog-products-csv-_3_.xlsx")
-OUTPUT_FILE = os.path.join(BASE_DIR, "output", "productos_filtrados.xlsx")
+
+today = datetime.now().strftime("%Y-%m-%d")
+OUTPUT_FILE = os.path.join(BASE_DIR, f"productos_filtrados_{today}.xlsx")
 
 # Leer Excel completo
 df = pd.read_excel(INPUT_FILE)
@@ -22,7 +25,7 @@ df_result = pd.DataFrame({
     "URL": df_es["url"]
 })
 
-# Guardar directamente en la raíz del proyecto
+# Guardar directamente en la raíz
 df_result.to_excel(OUTPUT_FILE, index=False)
 
 print(f"✅ Archivo generado en: {OUTPUT_FILE}")
