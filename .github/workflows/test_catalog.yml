@@ -27,4 +27,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: productos_filtrados
-          path: output/productos_filtrados.xlsx
+          path: productos_filtrados.xlsx
