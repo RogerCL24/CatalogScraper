@@ -16,7 +16,7 @@ df_es = df[df["lang"] == "es_ES"].copy()
 df_result = pd.DataFrame({
     "SKU": df_es["SKU"],
     "MODELO": df_es["modello"],
-    "CATEGORIA": df_es["category"],
+    "CATEGORIA": df_es["categorySingular"],
     "STOCK_LA62": "N/A",   # aún no disponible
     "PVP_WEB": "N/A",      # aún no disponible
     "URL": df_es["url"]
