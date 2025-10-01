@@ -11,9 +11,15 @@ INPUT_FILE = os.path.join(BASE_DIR, "files", "catalog-products-csv-_3_.xlsx")
 today = datetime.now().strftime("%Y-%m-%d")
 OUTPUT_FILE = os.path.join(BASE_DIR, f"productos_filtrados_{today}.xlsx")
 
+def normalize_url(url):
+    if not url.startswith("http"):
+        return "https://" + url.lstrip("/")
+    return url
+
 def get_pvp(url):
     """Scrapea el PVP desde la página del producto"""
     try:
+        url = normalize_url(url)
         headers = {"User-Agent": "Mozilla/5.0"}
         resp = requests.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
@@ -27,6 +33,7 @@ def get_pvp(url):
     except Exception as e:
         print(f"⚠️ Error al scrapear {url}: {e}")
         return "NO"
+
 
 # Leer Excel completo
 df = pd.read_excel(INPUT_FILE)
