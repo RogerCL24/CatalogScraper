@@ -42,7 +42,7 @@ def scrape_batch(urls_batch, batch_id):
             print(f"[Batch {batch_id}] ✅ {url}")
         except Exception as e:
             results[url] = "NO"
-            print(f"[Batch {batch_id}] ⚠️ {url} -> {e}")
+            print(f"[Batch {batch_id}] ⚠️ {url}")
 
     driver.quit()
     return results
