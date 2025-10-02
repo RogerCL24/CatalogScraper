@@ -1,6 +1,9 @@
 import pandas as pd
 import os
+import numpy as np
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -17,22 +20,32 @@ def normalize_url(url: str) -> str:
     return url
 
 
-def get_pvp(driver, url: str) -> str:
-    """Usa un solo driver para obtener el PVP de la URL"""
-    try:
-        driver.get(url)
-        wait = WebDriverWait(driver, 8)
+def scrape_batch(urls_batch, batch_id):
+    """Scrapea un lote de URLs con un driver independiente"""
+    opts = Options()
+    opts.binary_location = CHROME_BIN
+    opts.add_argument("--headless=new")
+    opts.add_argument("--no-sandbox")
+    opts.add_argument("--disable-dev-shm-usage")
 
-        price_el = wait.until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, "h2.product-detail__price"))
-        )
-        price = price_el.text.strip()
-        print(f"✅ {url} -> {price}")
-        return price
+    driver = webdriver.Chrome(options=opts)
+    results = {}
 
-    except Exception as e:
-        print(f"⚠️ {url} -> {str(e).splitlines()[0]}")
-        return "NO"
+    for url in urls_batch:
+        try:
+            driver.get(url)
+            wait = WebDriverWait(driver, 6)
+            el = wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "h2.product-detail__price"))
+            )
+            results[url] = el.text.strip()
+            print(f"[Batch {batch_id}] ✅ {url}")
+        except Exception as e:
+            results[url] = "NO"
+            print(f"[Batch {batch_id}] ⚠️ {url} -> {e}")
+
+    driver.quit()
+    return results
 
 
 # --- paths ---
@@ -47,27 +60,20 @@ df = pd.read_excel(INPUT_FILE)
 df_es = df[df["lang"] == "es_ES"].copy()
 
 urls = df_es["url"].apply(normalize_url).tolist()
-pvp_results = {}
+print(f"🔎 Scrapear {len(urls)} productos en paralelo...")
 
-print(f"🔎 Scrapear {len(urls)} productos con un solo navegador Selenium...")
+# --- dividir URLs en lotes ---
+num_batches = 4  # puedes ajustar a 3 o 4 según el tiempo
+url_batches = np.array_split(urls, num_batches)
 
-# --- init single driver ---
-opts = Options()
-opts.binary_location = CHROME_BIN
-opts.add_argument("--headless=new")
-opts.add_argument("--no-sandbox")
-opts.add_argument("--disable-dev-shm-usage")
-
-driver = webdriver.Chrome(options=opts)
-
-# recorrer todas las urls
-for url in urls:
-    pvp_results[url] = get_pvp(driver, url)
-
-driver.quit()
+final_results = {}
+with ThreadPoolExecutor(max_workers=num_batches) as executor:
+    futures = {executor.submit(scrape_batch, batch, i): i for i, batch in enumerate(url_batches)}
+    for future in as_completed(futures):
+        final_results.update(future.result())
 
 # --- asignar resultados ---
-df_es["PVP_WEB"] = df_es["url"].apply(normalize_url).map(pvp_results)
+df_es["PVP_WEB"] = df_es["url"].apply(normalize_url).map(final_results)
 
 # --- dataframe final ---
 df_result = pd.DataFrame({

@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pandas openpyxl selenium
+          pip install pandas openpyxl selenium numpy
 
       - name: Run catalog script
         env:
