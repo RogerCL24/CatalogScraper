@@ -1,9 +1,13 @@
 import pandas as pd
 import os
-import requests
-from bs4 import BeautifulSoup
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
 
 # --- helpers ---
 def normalize_url(url: str) -> str:
@@ -12,34 +16,36 @@ def normalize_url(url: str) -> str:
         return "https://" + url.lstrip("/")
     return url
 
+
 def get_pvp(url: str) -> str:
-    """Scrapea el PVP desde la página del producto"""
+    """Abre Selenium en headless, va a la URL y obtiene el precio"""
     url = normalize_url(url)
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        resp = requests.get(url, headers=headers, timeout=15)
+        opts = Options()
+        opts.add_argument("--headless=new")
+        opts.add_argument("--no-sandbox")
+        opts.add_argument("--disable-dev-shm-usage")
 
-        # si la página no existe
-        if resp.status_code == 404:
-            print(f"❌ 404 Not Found: {url}")
-            return "NO"
+        driver = webdriver.Chrome(options=opts)
+        driver.get(url)
 
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        price_tag = soup.select_one("h2.product-detail__price")
+        wait = WebDriverWait(driver, 10)
+        price_el = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "h2.product-detail__price"))
+        )
+        price = price_el.text.strip()
+        driver.quit()
 
-        if price_tag:
-            price = price_tag.get_text(strip=True)
-            print(f"✅ Precio encontrado en {url}: {price}")
-            return price
-        else:
-            print(f"⚠️ No se encontró precio en {url}")
-            print("HTML preview:", resp.text[:200], "...")
-            return "NO"
-
+        print(f"✅ Precio encontrado en {url}: {price}")
+        return price
     except Exception as e:
-        print(f"⚠️ Error al scrapear {url}: {e}")
+        print(f"⚠️ Error en {url}: {e}")
+        try:
+            driver.quit()
+        except:
+            pass
         return "NO"
+
 
 # --- paths ---
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -58,9 +64,9 @@ df_es = df[df["lang"] == "es_ES"].copy()
 urls = df_es["url"].tolist()
 pvp_results = {}
 
-print(f"🔎 Scrapear {len(urls)} productos en paralelo...")
+print(f"🔎 Scrapear {len(urls)} productos en paralelo con Selenium...")
 
-with ThreadPoolExecutor(max_workers=20) as executor:  # 20 workers en paralelo
+with ThreadPoolExecutor(max_workers=5) as executor:  # Selenium es pesado → mejor 5 en paralelo
     future_to_url = {executor.submit(get_pvp, url): url for url in urls}
     for future in as_completed(future_to_url):
         url = future_to_url[future]
@@ -81,7 +87,7 @@ df_result = pd.DataFrame({
     "CATEGORIA": df_es["categorySingular"],
     "STOCK_LA62": "N/A",  # aún no disponible
     "PVP_WEB": df_es["PVP_WEB"],
-    "URL": df_es["url"].apply(normalize_url)
+    "URL": df_es["url"].apply(normalize_url) 
 })
 
 # --- save ---
