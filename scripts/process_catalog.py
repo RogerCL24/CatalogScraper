@@ -8,6 +8,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+CHROME_BIN = os.getenv("CHROME_BIN", "/usr/bin/chromium-browser")
+
 
 # --- helpers ---
 def normalize_url(url: str) -> str:
@@ -22,6 +24,7 @@ def get_pvp(url: str) -> str:
     url = normalize_url(url)
     try:
         opts = Options()
+        opts.binary_location = CHROME_BIN
         opts.add_argument("--headless=new")
         opts.add_argument("--no-sandbox")
         opts.add_argument("--disable-dev-shm-usage")
