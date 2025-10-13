@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import numpy as np
+import json
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -21,7 +22,7 @@ def normalize_url(url: str) -> str:
 
 
 def scrape_batch(urls_batch, batch_id):
-    """Scrapea un lote de URLs con un driver independiente"""
+    """Scrapea un lote de URLs con Selenium"""
     opts = Options()
     opts.binary_location = CHROME_BIN
     opts.add_argument("--headless=new")
@@ -40,7 +41,7 @@ def scrape_batch(urls_batch, batch_id):
             )
             results[url] = el.text.strip()
             print(f"[Batch {batch_id}] ✅ {url}")
-        except Exception as e:
+        except Exception:
             results[url] = "NO"
             print(f"[Batch {batch_id}] ⚠️ {url}")
 
@@ -48,41 +49,86 @@ def scrape_batch(urls_batch, batch_id):
     return results
 
 
+def load_stock_json(json_path: str) -> pd.DataFrame:
+    """Carga el JSON recibido desde Power Automate"""
+    if not os.path.exists(json_path):
+        print("⚠️ No se encontró el archivo de stock (stock_data.json)")
+        return pd.DataFrame()
+
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    # Data puede venir anidada en "value"
+    if isinstance(data, dict) and "value" in data:
+        data = data["value"]
+
+    df_stock = pd.DataFrame(data)
+    print(f"📦 Stock importado: {len(df_stock)} filas")
+    return df_stock
+
+
 # --- paths ---
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 INPUT_FILE = os.path.join(BASE_DIR, "files", "catalog-products.xlsx")
+STOCK_FILE = os.path.join(BASE_DIR, "stock_data.json")
 
 today = datetime.now().strftime("%Y-%m-%d")
 OUTPUT_FILE = os.path.join(BASE_DIR, f"productos_filtrados_{today}.xlsx")
 
-# --- read input ---
-df = pd.read_excel(INPUT_FILE)
-df_es = df[df["lang"] == "es_ES"].copy()
+# --- leer catálogo ---
+df_catalog = pd.read_excel(INPUT_FILE)
+df_es = df_catalog[df_catalog["lang"] == "es_ES"].copy()
 
-urls = df_es["url"].apply(normalize_url).tolist()
+# --- leer stock JSON ---
+df_stock = load_stock_json(STOCK_FILE)
+
+# Normalizar URLs
+df_es["url"] = df_es["url"].apply(normalize_url)
+urls = df_es["url"].tolist()
+
 print(f"🔎 Scrapear {len(urls)} productos en paralelo...")
 
-# --- dividir URLs en lotes ---
-num_batches = 4  # puedes ajustar a 3 o 4 según el tiempo
+# --- scraping concurrente ---
+num_batches = 4
 url_batches = np.array_split(urls, num_batches)
-
 final_results = {}
+
 with ThreadPoolExecutor(max_workers=num_batches) as executor:
     futures = {executor.submit(scrape_batch, batch, i): i for i, batch in enumerate(url_batches)}
     for future in as_completed(futures):
         final_results.update(future.result())
 
-# --- asignar resultados ---
-df_es["PVP_WEB"] = df_es["url"].apply(normalize_url).map(final_results)
+df_es["PVP_WEB"] = df_es["url"].map(final_results)
+
+# --- procesar stock ---
+df_es["STOCK_LA62"] = "N/A"  # valor por defecto
+
+if not df_stock.empty:
+    print("🔄 Asignando stock por SKU...")
+    for idx, row in df_stock.iterrows():
+        try:
+            sku = str(row.iloc[0]).strip()  # primera columna
+            stock_value = row.iloc[1] if len(row) > 1 else None  # segunda columna
+
+            # Normalizar stock vacío → 0
+            if pd.isna(stock_value) or stock_value == "":
+                stock_value = 0
+
+            # Buscar coincidencias en el catálogo
+            mask = df_es["SKU"].astype(str).str.strip() == sku
+            if mask.any():
+                df_es.loc[mask, "STOCK_LA62"] = stock_value
+        except Exception as e:
+            print(f"⚠️ Error procesando fila {idx}: {e}")
 
 # --- dataframe final ---
 df_result = pd.DataFrame({
     "SKU": df_es["SKU"],
     "MODELO": df_es["modello"],
     "CATEGORIA": df_es["categorySingular"],
-    "STOCK_LA62": "N/A",
+    "STOCK_LA62": df_es["STOCK_LA62"],
     "PVP_WEB": df_es["PVP_WEB"],
-    "URL": df_es["url"].apply(normalize_url),
+    "URL": df_es["url"],
 })
 
 df_result.to_excel(OUTPUT_FILE, index=False)
