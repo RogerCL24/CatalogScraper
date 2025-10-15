@@ -2,6 +2,7 @@ import pandas as pd
 import os
 import numpy as np
 import json
+import requests
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -57,76 +58,31 @@ def scrape_batch(urls_batch, batch_id):
     return results
 
 
-def load_stock_json(json_path: str) -> pd.DataFrame:
-    """Carga el JSON recibido desde Power Automate y normaliza las columnas"""
-    if not os.path.exists(json_path):
-        print("⚠️ No se encontró el archivo de stock (stock_data.json)")
+def load_stock_from_url(stock_url: str, local_path: str) -> pd.DataFrame:
+    """Descarga el CSV/JSON del stock desde Drive y devuelve un DataFrame"""
+    try:
+        print(f"⬇️ Descargando datos de stock desde {stock_url}")
+        resp = requests.get(stock_url)
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "")
+        if "json" in content_type:
+            data = resp.json()
+            df = pd.DataFrame(data)
+        else:
+            # Si Power Automate lo sube como CSV
+            from io import StringIO
+            df = pd.read_csv(StringIO(resp.text))
+
+        # Guardar copia local para depuración
+        with open(local_path, "w", encoding="utf-8") as f:
+            f.write(resp.text)
+
+        print(f"✅ Stock descargado: {len(df)} filas")
+        return df
+    except Exception as e:
+        print(f"⚠️ Error descargando stock desde Drive: {e}")
         return pd.DataFrame()
-
-    with open(json_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Data puede venir anidada en "value"
-    if isinstance(data, dict) and "value" in data:
-        data = data["value"]
-
-    # Si viene como string JSON dentro del JSON, intenta parsearlo
-    if isinstance(data, str):
-        try:
-            data = json.loads(data)
-        except Exception:
-            pass
-
-    # Ahora esperamos una lista de dicts
-    if isinstance(data, list):
-        df_stock = pd.DataFrame(data)
-    elif isinstance(data, dict):
-        # intentar convertir dict de items a lista
-        df_stock = pd.DataFrame([data])
-    else:
-        df_stock = pd.DataFrame()
-
-    if df_stock.empty:
-        print("⚠️ El JSON de stock no contiene registros reconocibles.")
-        return df_stock
-
-    # Normalizar nombres de columnas: buscamos "Cod Prod" y "Stock Contable" (ignorar mayúsculas/espacios)
-    cols_map = {}
-    for c in df_stock.columns:
-        c_clean = c.strip().lower()
-        if "cod" in c_clean and "prod" in c_clean:
-            cols_map[c] = "Cod Prod"
-        elif "stock" in c_clean and "cont" in c_clean:
-            cols_map[c] = "Stock Contable"
-        elif "iteminternalid" in c_clean or "item" in c_clean and "id" in c_clean:
-            cols_map[c] = "ItemInternalId"
-
-    df_stock = df_stock.rename(columns=cols_map)
-
-    # Asegurarnos que las columnas clave existan (si no, las rellenamos con NaN)
-    if "Cod Prod" not in df_stock.columns:
-        # intentar inferir la primera columna como código
-        if df_stock.shape[1] >= 1:
-            df_stock = df_stock.rename(columns={df_stock.columns[0]: "Cod Prod"})
-        else:
-            print("⚠️ No se pudo identificar la columna 'Cod Prod' en el JSON.")
-    if "Stock Contable" not in df_stock.columns:
-        # intentar inferir segunda columna como stock
-        if df_stock.shape[1] >= 2:
-            df_stock = df_stock.rename(columns={df_stock.columns[1]: "Stock Contable"})
-        else:
-            print("⚠️ No se pudo identificar la columna 'Stock Contable' en el JSON.")
-
-    # Normalizar tipos
-    df_stock["Cod Prod"] = df_stock["Cod Prod"].astype(str).str.strip()
-    # convertir stock a numerico si es posible, nulos -> 0
-    if "Stock Contable" in df_stock.columns:
-        df_stock["Stock Contable"] = pd.to_numeric(df_stock["Stock Contable"], errors="coerce").fillna(0).astype(int)
-    else:
-        df_stock["Stock Contable"] = 0
-
-    print(f"📦 Stock importado: {len(df_stock)} filas")
-    return df_stock
 
 
 # --- paths ---
@@ -142,7 +98,9 @@ df_catalog = pd.read_excel(INPUT_FILE)
 df_es = df_catalog[df_catalog["lang"] == "es_ES"].copy()
 
 # --- leer stock JSON ---
-df_stock = load_stock_json(STOCK_FILE)
+STOCK_URL = os.getenv("STOCK_URL", "")
+
+df_stock = load_stock_from_url(STOCK_URL, STOCK_FILE)
 
 # Normalizar URLs
 df_es["url"] = df_es["url"].apply(normalize_url)
