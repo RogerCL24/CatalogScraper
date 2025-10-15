@@ -52,7 +52,7 @@ def scrape_batch(urls_batch, batch_id):
             print(f"[Batch {batch_id}] ✅ {url} -> {results[url]}")
         except Exception as e:
             results[url] = "NO"
-            print(f"[Batch {batch_id}] ⚠️ {url} -> {e}")
+            print(f"[Batch {batch_id}] ⚠️ {url} -> Error")
 
     driver.quit()
     return results
@@ -128,8 +128,8 @@ df_es["STOCK_LA62"] = 0  # valor por defecto = 0
 
 if not df_stock.empty:
     print("🔄 Asignando stock por SKU...")
-    # Indexar df_stock por Cod Prod para búsquedas rápidas
-    stock_map = df_stock.set_index("Cod Prod")["Stock Contable"].to_dict()
+    # Indexar df_stock por SKU para búsquedas rápidas
+    stock_map = df_stock.set_index("SKU")["Stock"].to_dict()
 
     # Normalizar SKU del catálogo a str sin espacios
     df_es["SKU_norm"] = df_es["SKU"].astype(str).str.strip()
