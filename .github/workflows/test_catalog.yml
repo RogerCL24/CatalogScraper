@@ -46,8 +46,10 @@ jobs:
       - name: Configure rclone
         run: |
           mkdir -p ~/.config/rclone
-          echo "${{ secrets.RCLONE_CONFIG }}" > ~/.config/rclone/rclone.conf
+          echo "${{ secrets.RCLONE_CONFIG_BASE64 }}" | base64 --decode > ~/.config/rclone/rclone.conf
+          cat ~/.config/rclone/rclone.conf
 
       - name: Upload to Google Drive
         run: |
-          rclone copy "productos_filtrados_$(date +'%Y-%m-%d').xlsx" gdrive:1B-QForJBzGdCp7scDZbTonXx1unBIS7P --progress
+          FILE="productos_filtrados_$(date +'%Y-%m-%d').xlsx"
+           rclone copy "$FILE" gdrive: --drive-root-folder-id 1B-QForJBzGdCp7scDZbTonXx1unBIS7P --progress
